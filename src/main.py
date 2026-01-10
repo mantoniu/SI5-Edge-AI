@@ -1,11 +1,11 @@
 from .backends import OnnxBackend, OakDBackend
 from .pipeline import BenchmarkPipeline
+from .helpers.utils import get_dataset_paths
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-DATA_DIR = PROJECT_ROOT / "data"
-LABELS_FILE = DATA_DIR / "labels.json"
+DATA_DIR, LABELS_FILE = get_dataset_paths("coco_person")
 
 MODEL_ONNX = PROJECT_ROOT / "models" / "yolo11n-seg.onnx"
 MODEL_BLOB = PROJECT_ROOT / "models" / "yolo11n-seg_openvino_2022.1_6shave.blob"

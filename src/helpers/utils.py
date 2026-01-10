@@ -1,8 +1,9 @@
 import json
 import os
-
 import cv2
 import numpy as np
+import kagglehub
+from pathlib import Path
 
 config_path = os.path.join(os.path.dirname(__file__), "config.json")
 with open(config_path, "r") as config:
@@ -13,6 +14,32 @@ class_names = model_data["class_names"]
 rng = np.random.default_rng(3)
 colors = rng.uniform(0, 255, size=(len(class_names), 3))
 
+DATASET_CONFIGS = {
+    "coco_person": {
+        "kaggle_slug": "asrulsaid/coco-person",
+        "image_subpath": "fiftyone/coco-2017/train/data",
+        "label_subpath": "fiftyone/coco-2017/train/labels.json"
+    }
+}
+
+def get_dataset_paths(dataset_key):
+    if dataset_key not in DATASET_CONFIGS:
+        raise ValueError(f"Dataset '{dataset_key}' unknown. Choices: {list(DATASET_CONFIGS.keys())}")
+
+    config = DATASET_CONFIGS[dataset_key]
+
+    root_path_str = kagglehub.dataset_download(config['kaggle_slug'])
+    root_path = Path(root_path_str)
+
+    data_dir = root_path / config['image_subpath']
+    labels_file = root_path / config['label_subpath']
+
+    if not data_dir.exists():
+        raise FileNotFoundError(f"Image directory not found: {data_dir}")
+    if not labels_file.exists():
+        raise FileNotFoundError(f"Labels file not found: {labels_file}")
+
+    return data_dir, labels_file
 
 def nms(boxes, scores, iou_threshold):
     # Sort by score
