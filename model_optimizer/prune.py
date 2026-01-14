@@ -1,0 +1,66 @@
+from ultralytics import YOLO
+import ultralytics
+from tqdm import tqdm
+
+model = YOLO('yolo11.yaml')
+
+import os
+import shutil
+
+def organize_onnx_files(base_runs_dir="./runs/segment", destination_dir="../models/"):
+    if not os.path.exists(destination_dir):
+        os.makedirs(destination_dir)
+        print(f"Dossier créé : {destination_dir}")
+
+    for folder_name in os.listdir(base_runs_dir):
+        onnx_path = os.path.join(base_runs_dir, folder_name, "weights", "best.onnx")
+
+        if os.path.exists(onnx_path):
+            new_name = f"{folder_name}.onnx"
+            final_destination = os.path.join(destination_dir, new_name)
+
+            base, ext = os.path.splitext(final_destination)
+            final_destination = base.replace('.', '_').replace(',', '_')
+
+            shutil.copy2(onnx_path, final_destination)
+            print(f"Copié et renommé : {new_name}")
+
+def prunetrain(train_epochs, prune_epochs=0, quick_pruning=True, prune_ratio=0.5, 
+               prune_iterative_steps=1, data='coco.yaml', name='yolo11', imgsz=640, 
+               batch=8, device=[0], sparse_training=False):
+    if not quick_pruning:
+        assert train_epochs > 0 and prune_epochs > 0, "Quick Pruning is not set. prune epochs must > 0."
+        model.train(data=data, epochs=train_epochs, imgsz=imgsz, batch=batch, device=device, name=name, prune=False,
+                    sparse_training=sparse_training)
+        return model.train(data=data, epochs=prune_epochs, imgsz=imgsz, batch=batch, device=device, name=name, prune=True,
+                           prune_ratio=prune_ratio, prune_iterative_steps=prune_iterative_steps)
+    else:
+        return model.train(data=data, epochs=train_epochs, imgsz=imgsz, batch=batch, device=device, 
+                           name=name, prune=True, prune_ratio=prune_ratio, prune_iterative_steps=prune_iterative_steps)
+
+
+
+if __name__ == '__main__':
+    for k in tqdm([0.05, 0.15, 0.25, 0.5, 0.75]):
+        model_name = f"yolo11n_seg_prune_{k}"
+        # Initialise ton modèle ici ou à l'intérieur de la fonction
+        model = YOLO('yolo11n-seg.pt')
+
+        # Normal Pruning
+        prunetrain(
+            quick_pruning=True,
+            data='coco8-seg.yaml',
+            train_epochs=5,
+            prune_epochs=5,
+            imgsz=640,
+            batch=8,
+            device=[0],
+            name=model_name,
+            prune_ratio=k,
+            prune_iterative_steps=1,
+            sparse_training=False
+        )
+
+        model = YOLO("./runs/segment/"+model_name+'/weights/best.pt')
+        model.export(format='onnx')
+        organize_onnx_files()

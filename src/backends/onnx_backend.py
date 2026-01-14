@@ -29,6 +29,10 @@ class OnnxBackend(InferenceBackend):
 
         blob = cv2.dnn.blobFromImage(input_img, 1/255.0, (0,0), swapRB=True, crop=False)
         
+        input_type = self.session.get_inputs()[0].type 
+        if "float16" in input_type:
+            blob = blob.astype(np.float16)
+
         t0 = time.perf_counter()
         outputs = self.session.run(self.output_names, {self.input_name: blob})
         t_infer = (time.perf_counter() - t0) * 1000
