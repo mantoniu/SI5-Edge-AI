@@ -3,12 +3,6 @@ import ultralytics
 from tqdm import tqdm
 from ultralytics import settings
 
-# Affiche les chemins actuels
-print("-------------------------" + settings['datasets_dir'])
-
-
-# Modifie le chemin par défaut pour qu'il pointe vers ton dossier parent de datasets
-settings.update({'datasets_dir': '.'})
 
 model = YOLO('yolo11.yaml')
 
@@ -48,7 +42,7 @@ def prunetrain(model, train_epochs, prune_epochs=0, quick_pruning=True, prune_ra
 
 
 if __name__ == '__main__':
-    for k in tqdm([0.1, 0.15, 0.25, 0.5, 0.75]):
+    for k in tqdm([0.05, 0.1, 0.15, 0.25, 0.5, 0.75]):
         model_name = f"yolo11n_seg_prune_{k}"
         # Initialise ton modèle ici ou à l'intérieur de la fonction
         model = YOLO('yolo11n-seg.pt')
