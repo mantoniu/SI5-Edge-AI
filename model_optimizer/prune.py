@@ -1,6 +1,14 @@
 from ultralytics import YOLO
 import ultralytics
 from tqdm import tqdm
+from ultralytics import settings
+
+# Affiche les chemins actuels
+print("-------------------------" + settings['datasets_dir'])
+
+
+# Modifie le chemin par défaut pour qu'il pointe vers ton dossier parent de datasets
+settings.update({'datasets_dir': '.'})
 
 model = YOLO('yolo11.yaml')
 
@@ -13,19 +21,18 @@ def organize_onnx_files(base_runs_dir="./runs/segment", destination_dir="../mode
         print(f"Dossier créé : {destination_dir}")
 
     for folder_name in os.listdir(base_runs_dir):
-        onnx_path = os.path.join(base_runs_dir, folder_name, "weights", "best.onnx")
+        onnx_path = os.path.join(base_runs_dir, folder_name, "weights", "yolo11n_seg_prune_0_2.onnx")
 
         if os.path.exists(onnx_path):
             new_name = f"{folder_name}.onnx"
-            final_destination = os.path.join(destination_dir, new_name)
+            final_name = new_name.replace('.', '_').replace(',', '_')
 
-            base, ext = os.path.splitext(final_destination)
-            final_destination = base.replace('.', '_').replace(',', '_')
+            final_destination = os.path.join(destination_dir, final_name)
 
             shutil.copy2(onnx_path, final_destination)
             print(f"Copié et renommé : {new_name}")
 
-def prunetrain(train_epochs, prune_epochs=0, quick_pruning=True, prune_ratio=0.5, 
+def prunetrain(model, train_epochs, prune_epochs=0, quick_pruning=True, prune_ratio=0.5,
                prune_iterative_steps=1, data='coco.yaml', name='yolo11', imgsz=640, 
                batch=8, device=[0], sparse_training=False):
     if not quick_pruning:
@@ -41,19 +48,20 @@ def prunetrain(train_epochs, prune_epochs=0, quick_pruning=True, prune_ratio=0.5
 
 
 if __name__ == '__main__':
-    for k in tqdm([0.05, 0.15, 0.25, 0.5, 0.75]):
+    for k in tqdm([0.1, 0.15, 0.25, 0.5, 0.75]):
         model_name = f"yolo11n_seg_prune_{k}"
         # Initialise ton modèle ici ou à l'intérieur de la fonction
         model = YOLO('yolo11n-seg.pt')
 
         # Normal Pruning
         prunetrain(
+            model = model,
             quick_pruning=True,
-            data='coco8-seg.yaml',
-            train_epochs=5,
+            data='voc500.yaml',
+            train_epochs=25,
             prune_epochs=5,
             imgsz=640,
-            batch=8,
+            batch=5,
             device=[0],
             name=model_name,
             prune_ratio=k,

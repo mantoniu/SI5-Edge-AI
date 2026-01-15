@@ -17,7 +17,7 @@ def export_to_oak_blob(onnx_path, datatype="FP16"):
     print(f"Blob créé : {blob_path}")
 
 if __name__ == "__main__":
-    for model in os.listdir('./models'):
+    for model in os.listdir('../models'):
         if "fp32" in model:
             export_to_oak_blob(onnx_path=os.path.join('../models/', model), datatype="FP32")
         elif "int8" in model:
