@@ -6,8 +6,14 @@ from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pycocotools import mask as mask_utils
 
+from .helpers.utils import get_dataset_paths
+
+# Benchmark settings
+MAX_IMAGES = 100
+DATA_DIR, LABELS_FILE = get_dataset_paths("coco_person")
+
 class BenchmarkPipeline:
-    def __init__(self, data_path, labels_path):
+    def __init__(self, data_path=DATA_DIR, labels_path=LABELS_FILE):
         self.data_path = data_path
         self.coco_gt = COCO(labels_path)
         
@@ -27,6 +33,25 @@ class BenchmarkPipeline:
 
         self.images = [f for f in self.images if f in self.filename_to_id]
 
+    def bench(self, backend_class, models, output_dir, max_images=MAX_IMAGES, backend_kwargs=None):
+        if backend_kwargs is None:
+            backend_kwargs = {}
+            
+        results = {}
+        for model_name, model_path in models.items():
+            try:
+                print(f"\n--- Benchmarking Model: {model_name} ---")
+
+                backend = backend_class(model_path, **backend_kwargs)
+                stats = self.run(backend, max_images=max_images)
+                results[model_name] = stats
+                backend.close()
+            except Exception as e:
+                print(f"Error processing model {model_name}: {e}")
+
+        self.export_to_csv(results, output_dir)
+        return results
+
     def run(self, backend, max_images=None):
         coco_results = []
         times = []
@@ -39,7 +64,9 @@ class BenchmarkPipeline:
             path = os.path.join(self.data_path, img_name)
             img_array = np.fromfile(path, dtype=np.uint8)
             img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-            if img is None: continue
+
+            if img is None: 
+                continue
             
             image_id = self.filename_to_id[img_name]
 
@@ -107,3 +134,26 @@ class BenchmarkPipeline:
                 stats["mAP_mask"] = eval_seg.stats[0]
 
         return stats
+    
+    def export_to_csv(self, stats, output_dir):
+        if not stats:
+            return
+        
+        csv_path = os.path.join(output_dir, "benchmark_summary.csv")
+        first_model_stats = next(iter(stats.values()))
+        
+        fieldnames = ['Model'] + list(first_model_stats.keys())
+
+        with open(csv_path, mode='w', newline='', encoding='utf-8') as csv_file:
+            import csv
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+
+            writer.writeheader()
+            
+            for model_name, model_stats in stats.items():
+                row = {'Model': model_name}
+                row.update(model_stats)
+                writer.writerow(row)
+
+# Global benchmark instance
+benchmark = BenchmarkPipeline()
