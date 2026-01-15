@@ -1,25 +1,45 @@
 import onnxruntime as ort
 import cv2
 import time
-
+import platform
+import multiprocessing
 from .inference_backend import InferenceBackend
 
 class OnnxBackend(InferenceBackend):
     def __init__(self, model_path, input_size=(640, 640), use_gpu=True):
         super().__init__(model_path, input_size)
+        
+        arch = platform.machine().lower()
+        available_providers = ort.get_available_providers()
+        providers = []
+        provider_options = []
+        options = None
 
-        providers = ['CPUExecutionProvider']
-        if use_gpu:
-            if 'CUDAExecutionProvider' in ort.get_available_providers():
-                providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
-                print(f"GPU Mode enabled")
-            else:
-                print("GPU requested but 'CUDAExecutionProvider' not found. Falling back to CPU.")
-        else:
-            print("CPU Mode selected.")
+        if use_gpu and 'CUDAExecutionProvider' in available_providers:
+            providers.append('CUDAExecutionProvider')
+            print(" Mode GPU (CUDA) activé.")
+        
+        elif "arm" in arch or "aarch64" in arch:
+            options = ort.SessionOptions()
+            options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            options.intra_op_num_threads = 4
+            options.inter_op_num_threads = 1
+            options.enable_cpu_mem_arena = True
+            options.enable_mem_pattern = True
+            options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+
+        providers.append('CPUExecutionProvider')
+        if not providers[0].startswith(('CUDA', 'XNNPACK')):
+            print("Mode CPU standard sélectionné.")
 
         print(f"Loading ONNX model: {model_path}...")
-        self.session = ort.InferenceSession(model_path, providers=providers)
+        
+        self.session = ort.InferenceSession(
+            str(model_path), 
+            sess_options=options, 
+            providers=providers,
+            provider_options=provider_options if provider_options else None
+        )
         
         self.input_name = self.session.get_inputs()[0].name
         self.output_names = [o.name for o in self.session.get_outputs()]
