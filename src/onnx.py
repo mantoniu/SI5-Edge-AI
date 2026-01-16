@@ -11,7 +11,7 @@ models_files = {}
 for model_path in ONNX_MODELS.iterdir():
     if model_path.suffix == ".onnx":
         models_files[model_path.name] = model_path
-        print(f"🔹 Modèle trouvé : {model_path.name}")
+        print(f"🔹 Model found: {model_path.name}")
 
 benchmark.bench(
     OnnxBackend, 

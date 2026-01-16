@@ -22,7 +22,7 @@ def extract_values_to_csv(video_path, output_file):
         writer = csv.writer(f)
         writer.writerow(['Temps (s)', 'Tension (V)', 'Courant (A)', 'Watt (W)'])
         
-        print(f"Analyse en cours... Les données seront sauvegardées dans : {output_file}")
+        print(f"Analysis in progress... Data will be saved in: {output_file}")
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -42,7 +42,7 @@ def extract_values_to_csv(video_path, output_file):
                 
                 pil_image = Image.fromarray(frame_adj)
 
-                prompt = "Analyse l'écran. Donne UNIQUEMENT les deux nombres séparés par une virgule (ex: 5.21, 0.13). Ne rajoute aucune lettre."
+                prompt = "Analyze the screen. Give ONLY the two numbers separated by a comma (e.g., 5.21, 0.13). Do not add any letters."
                 
                 try:
                     response = model.generate_content([prompt, pil_image])
@@ -53,16 +53,16 @@ def extract_values_to_csv(video_path, output_file):
                     if len(valeurs) == 2:
                         tension, courant = valeurs[0], valeurs[1]
                         writer.writerow([second, tension, courant, float(tension)*float(courant)])
-                        print(f"[{second}s] Sauvegardé : {tension}V, {courant}A, {float(tension)*float(courant)}W")
+                        print(f"[{second}s] Saved: {tension}V, {courant}A, {float(tension)*float(courant)}W")
                     else:
-                        print(f"[{second}s] Erreur format : {clean_res}")
+                        print(f"[{second}s] Format error: {clean_res}")
                         
                 except Exception as e:
-                    print(f"Erreur à {second}s: {e}")
+                    print(f"Error at {second}s: {e}")
 
             frame_count += 1
 
     cap.release()
-    print(f"Analyse terminée. Fichier prêt : {os.path.abspath(output_file)}")
+    print(f"Analysis complete. File ready: {os.path.abspath(output_file)}")
 
 extract_values_to_csv("./video_onnx.mp4","resultats_mesures_onnx.csv")

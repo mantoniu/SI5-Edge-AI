@@ -17,7 +17,7 @@ class OnnxBackend(InferenceBackend):
 
         if use_gpu and 'CUDAExecutionProvider' in available_providers:
             providers.append('CUDAExecutionProvider')
-            print(" Mode GPU (CUDA) activé.")
+            print(" GPU mode (CUDA) enabled.")
         
         elif "arm" in arch or "aarch64" in arch:
             options = ort.SessionOptions()
@@ -30,7 +30,7 @@ class OnnxBackend(InferenceBackend):
 
         providers.append('CPUExecutionProvider')
         if not providers[0].startswith(('CUDA', 'XNNPACK')):
-            print("Mode CPU standard sélectionné.")
+            print("Standard CPU mode selected.")
 
         print(f"Loading ONNX model: {model_path}...")
         

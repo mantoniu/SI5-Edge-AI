@@ -53,8 +53,8 @@ class BenchmarkPipeline:
                 results[model_name] = stats
                 backend.close()
                 
-                print(f"\n[INFO] Benchmark terminé pour {model_name}.")
-                print("Attente de 10 secondes pour laisser le matériel refroidir...")
+                print(f"\n[INFO] Benchmark completed for {model_name}.")
+                print("Waiting 10 seconds to let hardware cool down...")
                 time.sleep(10)
 
             except Exception as e:

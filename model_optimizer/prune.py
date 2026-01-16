@@ -12,7 +12,7 @@ import shutil
 def organize_onnx_files(base_runs_dir="./runs/segment", destination_dir="../models/"):
     if not os.path.exists(destination_dir):
         os.makedirs(destination_dir)
-        print(f"Dossier créé : {destination_dir}")
+        print(f"Folder created: {destination_dir}")
 
     for folder_name in os.listdir(base_runs_dir):
         onnx_path = os.path.join(base_runs_dir, folder_name, "weights", "yolo11n_seg_prune_0_2.onnx")
@@ -24,7 +24,7 @@ def organize_onnx_files(base_runs_dir="./runs/segment", destination_dir="../mode
             final_destination = os.path.join(destination_dir, final_name)
 
             shutil.copy2(onnx_path, final_destination)
-            print(f"Copié et renommé : {new_name}")
+            print(f"Copied and renamed: {new_name}")
 
 def prunetrain(model, train_epochs, prune_epochs=0, quick_pruning=True, prune_ratio=0.5,
                prune_iterative_steps=1, data='coco.yaml', name='yolo11', imgsz=640, 
@@ -44,7 +44,7 @@ def prunetrain(model, train_epochs, prune_epochs=0, quick_pruning=True, prune_ra
 if __name__ == '__main__':
     for k in tqdm([0.05, 0.1, 0.15, 0.25, 0.5, 0.75]):
         model_name = f"yolo11n_seg_prune_{k}"
-        # Initialise ton modèle ici ou à l'intérieur de la fonction
+        # Initialize your model here or inside the function
         model = YOLO('yolo11n-seg.pt')
 
         # Normal Pruning

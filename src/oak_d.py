@@ -12,7 +12,7 @@ models_files = {}
 for model_path in BLOB_MODELS.iterdir():
     if model_path.suffix == ".blob":
         models_files[model_path.name] = model_path
-        print(f"🔹 Modèle trouvé : {model_path.name}")
+        print(f"🔹 Model found: {model_path.name}")
 
 benchmark.bench(
     OakDBackend, 
