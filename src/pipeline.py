@@ -5,6 +5,7 @@ from tqdm import tqdm
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pycocotools import mask as mask_utils
+import time
 
 from .helpers.utils import get_dataset_paths
 
@@ -13,8 +14,9 @@ MAX_IMAGES = 100
 DATA_DIR, LABELS_FILE = get_dataset_paths("coco_person")
 
 class BenchmarkPipeline:
-    def __init__(self, data_path=DATA_DIR, labels_path=LABELS_FILE):
+    def __init__(self, data_path=DATA_DIR, result_path = 'benchmark.csv',labels_path=LABELS_FILE):
         self.data_path = data_path
+        self.result_path = result_path
         self.coco_gt = COCO(labels_path)
         
         self.person_cat_id = 1
@@ -38,19 +40,29 @@ class BenchmarkPipeline:
             backend_kwargs = {}
             
         results = {}
-        for model_name, model_path in models.items():
+        model_list = list(models.items()) # On transforme en liste pour savoir si on est au dernier
+        
+        for i, (model_name, model_path) in enumerate(model_list):
             try:
-                print(f"\n--- Benchmarking Model: {model_name} ---")
+                print(f"\n" + "="*50)
+                print(f"--- Benchmarking Model {i+1}/{len(model_list)}: {model_name} ---")
+                print("="*50)
 
                 backend = backend_class(model_path, **backend_kwargs)
                 stats = self.run(backend, max_images=max_images)
                 results[model_name] = stats
                 backend.close()
+                
+                print(f"\n[INFO] Benchmark terminé pour {model_name}.")
+                print("Attente de 10 secondes pour laisser le matériel refroidir...")
+                time.sleep(10)
+
             except Exception as e:
                 print(f"Error processing model {model_name}: {e}")
 
         self.export_to_csv(results, output_dir)
         return results
+
 
     def run(self, backend, max_images=None):
         coco_results = []
@@ -139,7 +151,7 @@ class BenchmarkPipeline:
         if not stats:
             return
         
-        csv_path = os.path.join(output_dir, "benchmark_summary.csv")
+        csv_path = os.path.join(output_dir, self.result_path)
         first_model_stats = next(iter(stats.values()))
         
         fieldnames = ['Model'] + list(first_model_stats.keys())

@@ -15,6 +15,7 @@ for model_path in ONNX_MODELS.iterdir():
 
 benchmark.bench(
     OnnxBackend, 
-    models_files, 
-    PROJECT_ROOT / "results"
+    models_files,
+    PROJECT_ROOT / "results",
+    result_path = 'benchmark_onnx.csv'
 )
