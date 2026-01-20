@@ -158,6 +158,25 @@ def plot_efficiency(df, map_col, map_label, filename):
     plt.savefig(os.path.join(OUTPUT_DIR, filename), bbox_inches='tight')
     plt.close()
 
+def plot_inference_time_bar(df, filename):
+    """
+    Génère un graphique en bâtons du temps d'inférence moyen par modèle et périphérique.
+    """
+    plt.figure(figsize=(12, 6))
+    sns.set_style("whitegrid")
+    pivot_df = df.pivot(index='Model', columns='Device', values='InferenceTime')
+    pivot_df.plot(kind='bar', edgecolor='black')
+    plt.title("Temps d'inférence moyen par modèle et périphérique", fontsize=15)
+    plt.ylabel("Temps d'inférence (ms)", fontsize=12)
+    plt.xlabel("Modèle", fontsize=12)
+    plt.xticks(rotation=45, ha='right')
+    plt.yscale('log')
+    plt.tight_layout()
+    # Déplacer la légende à droite, hors du graphique
+    plt.legend(title="Périphérique", bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0)
+    plt.savefig(os.path.join(OUTPUT_DIR, filename), bbox_inches='tight')
+    plt.close()
+
 def generate_global_comparisons(bench_config):
     print("\n--- 2. Génération des comparaisons mAP / Efficacité (Énergie Dynamique) ---")
     results = []
@@ -186,7 +205,8 @@ def generate_global_comparisons(bench_config):
                     'Model': clean_model_name(row['Model']),
                     'mAP_box': row['mAP_box'],
                     'mAP_mask': row['mAP_mask'],
-                    'Score': score
+                    'Score': score,
+                    'InferenceTime': row['time_avg']
                 })
 
     if not results:
@@ -196,6 +216,8 @@ def generate_global_comparisons(bench_config):
     df_final = pd.DataFrame(results)
     plot_efficiency(df_final, 'mAP_box', 'mAP Box', 'comparaison_efficacite_box.png')
     plot_efficiency(df_final, 'mAP_mask', 'mAP Mask', 'comparaison_efficacite_mask.png')
+    # Ajout du graphique en bâtons pour le temps d'inférence
+    plot_inference_time_bar(df_final, 'comparaison_temps_inference.png')
     print(f"Graphiques globaux sauvegardés dans : {OUTPUT_DIR}")
 
 # 5. EXÉCUTION
