@@ -44,7 +44,7 @@ def generate_individual_profiles(config_dict):
     print("--- 1. Génération des profils individuels (Courbes & Moyennes) ---")
     
     for file_key, (time_step, custom_label) in config_dict.items():
-        files = [file_key] if isinstance(file_key, str) else file_key
+        files = [file_key] if isinstance(file_key, str) else list(file_key)
         
         valid_dfs = []
         for f in files:
@@ -56,65 +56,90 @@ def generate_individual_profiles(config_dict):
         if not valid_dfs:
             continue
 
-        df = valid_dfs[0].copy()
-        col_conso = 'Power' if 'Power' in df.columns else 'Watt (W)'
+        # Détection automatique des colonnes
+        col_conso = 'Power' if 'Power' in valid_dfs[0].columns else 'Watt (W)'
+        col_phase = 'Phase' if 'Phase' in valid_dfs[0].columns else 'Model'
         
+        # Somme pour le graphique des courbes (on s'aligne sur la longueur minimale)
+        min_len = min(len(d) for d in valid_dfs)
+        df_total = valid_dfs[0].iloc[:min_len].copy()
         if len(valid_dfs) > 1:
             for other_df in valid_dfs[1:]:
-                df[col_conso] += other_df[col_conso]
+                df_total[col_conso] += other_df[col_conso].iloc[:min_len].values
         
-        models = [p for p in df['Phase'].unique() if p != 'Idle']
+        models = [p for p in df_total[col_phase].unique() if p != 'Idle']
         
+        # --- A. GRAPHE DES COURBES (PUISSANCE TOTALE) ---
         plt.figure(figsize=(12, 6))
-        averages = {}
-        
-        idle_data = df[df['Phase'] == 'Idle'][col_conso]
-        if not idle_data.empty:
-            idle_p = idle_data.mean()
-            averages['Idle'] = idle_p
-
         for model in models:
-            indices = df.index[df['Phase'] == model].tolist()
+            indices = df_total.index[df_total[col_phase] == model].tolist()
             if not indices: continue
             
-            s, e = max(0, indices[0]-5), min(len(df)-1, indices[-1]+5)
-            subset = df.iloc[s:e+1].copy()
+            s, e = max(0, indices[0]-5), min(len(df_total)-1, indices[-1]+5)
+            subset = df_total.iloc[s:e+1].copy()
             subset['Relative Time'] = np.arange(len(subset)) * time_step
             
             label_c = clean_model_name(model)
             plt.plot(subset['Relative Time'], subset[col_conso], label=label_c)
-            
-            averages[label_c] = df.iloc[indices[0]:indices[-1]+1][col_conso].mean()
 
-        plt.title(f"Profil : {custom_label}")
+        plt.title(f"Profil de Puissance Totale : {custom_label}")
         plt.xlabel("Secondes")
         plt.ylabel("Puissance (Watt)")
-        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize='large')
+        plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         plt.grid(True, alpha=0.3)
         plt.tight_layout()
-        
         file_name_clean = custom_label.replace(' ', '_').replace('+', 'plus')
         plt.savefig(os.path.join(OUTPUT_DIR, f"courbes_{file_name_clean}.png"))
         plt.close()
 
-        if averages:
-            sorted_avg = dict(sorted(averages.items(), key=lambda x: x[1], reverse=True))
-            plt.figure(figsize=(10, 5))
-            colors = ['orange' if k == 'Idle' else 'skyblue' for k in sorted_avg.keys()]
-            bars = plt.bar(sorted_avg.keys(), sorted_avg.values(), color=colors, edgecolor='black')
-            
-            plt.title(f"Consommation Moyenne : {custom_label}")
-            plt.ylabel("Watts")
-            plt.xticks(rotation=45, ha='right')
-            
-            for b in bars:
-                plt.text(b.get_x()+b.get_width()/2, b.get_height()+0.02, 
-                         f"{b.get_height():.2f}W", ha='center', fontweight='bold')
-            
-            plt.tight_layout()
-            plt.savefig(os.path.join(OUTPUT_DIR, f"moyennes_{file_name_clean}.png"))
-            plt.close()
-            
+        # --- B. GRAPHE DES MOYENNES (EMPILÉES SI MULTI-FICHIERS) ---
+        phases = ['Idle'] + models
+        avg_data = {}
+        
+        for p in phases:
+            p_clean = clean_model_name(p) if p != 'Idle' else 'Idle'
+            vals = []
+            for d in valid_dfs:
+                subset = d[d[col_phase] == p]
+                vals.append(subset[col_conso].mean() if not subset.empty else 0)
+            avg_data[p_clean] = vals
+
+        # Tri par puissance totale décroissante
+        sorted_keys = sorted(avg_data.keys(), key=lambda k: sum(avg_data[k]), reverse=True)
+        
+        plt.figure(figsize=(12, 6))
+        bottoms = np.zeros(len(sorted_keys))
+        
+        # Couleurs et labels pour les composants
+        if len(valid_dfs) == 2:
+            comp_names = ["GPU", "CPU"] # Basé sur l'ordre de votre tuple
+            comp_colors = ['#3498db', '#e74c3c'] # Bleu pour GPU, Rouge pour CPU
+        else:
+            comp_names = [f"Fichier {i+1}" for i in range(len(valid_dfs))]
+            comp_colors = sns.color_palette("muted", len(valid_dfs))
+
+        for i in range(len(valid_dfs)):
+            heights = [avg_data[k][i] for k in sorted_keys]
+            plt.bar(sorted_keys, heights, bottom=bottoms, color=comp_colors[i], 
+                    edgecolor='black', label=comp_names[i])
+            bottoms += np.array(heights)
+
+        # Ajout du texte de la puissance totale au-dessus de chaque barre
+        for idx, k in enumerate(sorted_keys):
+            total = sum(avg_data[k])
+            plt.text(idx, total + 0.1, f"{total:.2f}W", ha='center', fontweight='bold')
+
+        plt.title(f"Consommation Moyenne Détaillée : {custom_label}")
+        plt.ylabel("Watts")
+        plt.xticks(rotation=45, ha='right')
+        if len(valid_dfs) > 1:
+            plt.legend(title="Composants")
+        
+        plt.grid(axis='y', linestyle='--', alpha=0.5)
+        plt.tight_layout()
+        plt.savefig(os.path.join(OUTPUT_DIR, f"moyennes_{file_name_clean}.png"))
+        plt.close()
+        
         print(f"Terminé pour {custom_label}")
 
 # 4. GÉNÉRATION DES COMPARAISONS GLOBALES
