@@ -14,8 +14,8 @@ DEVICE_COLORS = {
     'Raspberry Pi': '#2ca02c',          # Vert
     'OAK-D Pro V2': '#ff7f0e',          # Orange
     'CPU': '#1f77b4',                   # Bleu
-    'GPU': "#d62728",                   # Rouge clair (pour la partie GPU pure)
-    'GPU (CPU Fallback)': "#8e1b1bff"           # Rouge foncé (pour la partie CPU pendant GPU)
+    'GPU': "#d62728",                   # Rouge clair
+    'GPU (CPU Fallback)': "#8e1b1bff"   # Rouge foncé
 }
 PROFILING_CONFIG = { 
     './results/power_monitoring/rasp_prepared.csv': (1.0, "Raspberry Pi 4"), 
@@ -57,18 +57,21 @@ def get_global_max_powers(config_dict):
         combined = np.zeros(min_len) 
         for d in dfs: 
             combined += d[col].iloc[:min_len].values 
-         
+          
         df_tmp = dfs[0].iloc[:min_len].copy() 
         df_tmp[col] = combined 
         idle = get_avg_power(df_tmp, 'Idle') 
-         
+          
         max_tot = max(max_tot, np.max(combined)) 
         max_dyn = max(max_dyn, np.max(combined - idle)) 
     return max_tot, max_dyn 
 
-# --- NOUVELLE FONCTION AJOUTÉE ---
 def plot_merged_consumption_stacked(df, filename):
+    # On s'assure que 'Idle' apparaisse en premier si présent
     models = df['Model'].unique()
+    if 'Idle' in models:
+        models = ['Idle'] + [m for m in models if m != 'Idle']
+        
     devices = ['Raspberry Pi', 'OAK-D Pro V2', 'CPU', 'GPU']
     
     fig, ax = plt.subplots(figsize=(14, 8))
@@ -76,40 +79,35 @@ def plot_merged_consumption_stacked(df, filename):
     indices = np.arange(len(models))
 
     for i, dev_name in enumerate(devices):
-        # Positionnement horizontal de la barre dans le groupe
         x_positions = indices + (i - len(devices)/2 + 0.5) * bar_width
         
         for j, model in enumerate(models):
             row = df[(df['Model'] == model) & (df['Device'] == dev_name)]
             if row.empty: continue
             
-            powers = row.iloc[0]['PowerList'] # Récupère la liste des Watts par composant
+            powers = row.iloc[0]['PowerList'] 
             pos = x_positions[j]
             
             if dev_name == 'GPU' and len(powers) >= 2:
-                # BARRE BICOLORE : GPU (bas) + Fallback CPU (haut)
                 ax.bar(pos, powers[0], bar_width, color=DEVICE_COLORS['GPU'], edgecolor='black', 
-                       label='GPU' if j==0 and i==3 else "")
+                        label='GPU' if j==0 and i==3 else "")
                 ax.bar(pos, powers[1], bar_width, bottom=powers[0], color=DEVICE_COLORS['GPU (CPU Fallback)'], edgecolor='black', 
-                       label='GPU (CPU Fallback)' if j==0 and i==3 else "")
+                        label='GPU (CPU Fallback)' if j==0 and i==3 else "")
                 total = sum(powers)
             else:
-                # BARRE UNICOLORE
                 color = DEVICE_COLORS.get(dev_name, 'gray')
                 ax.bar(pos, powers[0], bar_width, color=color, edgecolor='black', 
-                       label=dev_name if j==0 else "")
+                        label=dev_name if j==0 else "")
                 total = powers[0]
             
-            # Label Watt au dessus de chaque barre
             ax.text(pos, total + 0.5, f'{total:.1f}W', ha='center', va='bottom', fontsize=8, fontweight='bold')
 
-    ax.set_title("Comparaison de la consommation moyenne par modèle et périphérique", fontsize=15, pad=20)
+    ax.set_title("Comparaison de la consommation moyenne (Modèles + Idle)", fontsize=15, pad=20)
     ax.set_ylabel("Consommation Moyenne (Watts)")
     ax.set_xticks(indices)
     ax.set_xticklabels(models, rotation=45, ha='right')
     ax.grid(axis='y', linestyle='--', alpha=0.3)
     
-    # Nettoyage de la légende pour éviter les doublons
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), title="Périphériques", bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -118,10 +116,8 @@ def plot_merged_consumption_stacked(df, filename):
     plt.savefig(os.path.join(OUTPUT_DIR, filename), bbox_inches='tight')
     plt.close()
 
-# 3. GÉNÉRATION DES PROFILS INDIVIDUELS 
 def generate_individual_profiles(config_dict, g_max_total, g_max_dynamic): 
     print(f"--- 1. Profils individuels (Axes Y verrouillés) ---") 
-     
     for file_key, (time_step, custom_label) in config_dict.items(): 
         files = [file_key] if isinstance(file_key, str) else list(file_key) 
         valid_dfs = [pd.read_csv(f) for f in files if os.path.exists(f)] 
@@ -129,7 +125,7 @@ def generate_individual_profiles(config_dict, g_max_total, g_max_dynamic):
 
         col_conso = 'Power' if 'Power' in valid_dfs[0].columns else 'Watt (W)' 
         col_phase = 'Phase' if 'Phase' in valid_dfs[0].columns else 'Model' 
-         
+          
         min_len = min(len(d) for d in valid_dfs) 
         df_total = valid_dfs[0].iloc[:min_len].copy() 
         if len(valid_dfs) > 1: 
@@ -138,8 +134,7 @@ def generate_individual_profiles(config_dict, g_max_total, g_max_dynamic):
 
         idle_power = get_avg_power(df_total, 'Idle') 
         models = [p for p in df_total[col_phase].unique() if p.lower() != 'idle'] 
-         
-        # --- A. COURBES DYNAMIQUES --- 
+          
         plt.figure(figsize=(12, 6)) 
         for model in models: 
             indices = df_total.index[df_total[col_phase] == model].tolist() 
@@ -160,16 +155,15 @@ def generate_individual_profiles(config_dict, g_max_total, g_max_dynamic):
         plt.savefig(os.path.join(OUTPUT_DIR, f"courbes_{custom_label.replace(' ', '_')}.png")) 
         plt.close() 
 
-        # --- B. MOYENNES TOTALES --- 
         phases = ['Idle'] + models 
         avg_data = {clean_model_name(p) if p.lower() != 'idle' else 'Idle':  
                     [get_avg_power(d, p) for d in valid_dfs] for p in phases} 
         sorted_keys = sorted(avg_data.keys(), key=lambda k: sum(avg_data[k]), reverse=True) 
-         
+          
         fig, ax = plt.subplots(figsize=(12, 6)) 
         bottoms = np.zeros(len(sorted_keys)) 
         colors = sns.color_palette("muted", len(valid_dfs)) 
-         
+          
         for i in range(len(valid_dfs)): 
             heights = [avg_data[k][i] for k in sorted_keys] 
             label = "GPU" if (i==0 and "GPU" in custom_label) else ("CPU" if "GPU" in custom_label else f"File {i+1}") 
@@ -192,18 +186,19 @@ def generate_individual_profiles(config_dict, g_max_total, g_max_dynamic):
         plt.savefig(os.path.join(OUTPUT_DIR, f"moyennes_totales_{custom_label.replace(' ', '_')}.png")) 
         plt.close() 
 
-# 4. COMPARAISONS GLOBALES 
 def plot_efficiency(df, map_col, map_label, filename): 
+    # On filtre 'Idle' pour les graphes d'efficacité (mAP vs Joule n'a pas de sens pour Idle)
+    df_plot = df[df['Model'] != 'Idle']
     fig, ax = plt.subplots(figsize=(12, 8)) 
     sns.set_style("whitegrid") 
-     
-    models_list = sorted(df['Model'].unique()) 
-    devices_list = df['Device'].unique() 
+      
+    models_list = sorted(df_plot['Model'].unique()) 
+    devices_list = df_plot['Device'].unique() 
     colors = dict(zip(models_list, sns.color_palette("husl", len(models_list)))) 
     markers = {dev: m for dev, m in zip(devices_list, ['o', 's', 'D', '^', 'v'])} 
 
     for mod in models_list: 
-        mod_df = df[df['Model'] == mod].sort_values(map_col) 
+        mod_df = df_plot[df_plot['Model'] == mod].sort_values(map_col) 
         ax.plot(mod_df[map_col], mod_df['Score'], color=colors[mod], alpha=0.4, linewidth=1.5) 
         for dev in devices_list: 
             pt = mod_df[mod_df['Device'] == dev] 
@@ -215,7 +210,7 @@ def plot_efficiency(df, map_col, map_label, filename):
     ax.set_title(f"Efficacité : {map_label} vs Énergie", fontsize=15) 
     ax.set_xlabel(f"Précision ({map_label})", fontsize=12) 
     ax.set_ylabel("Énergie consommée (J)", fontsize=12) 
-     
+      
     ax.set_yscale('log') 
     ax.grid(True, which="both", linestyle='--', alpha=0.4) 
     ax.text(0, 1.01, 'Logarithmique', transform=ax.transAxes, fontsize=9, fontweight='bold', va='bottom') 
@@ -233,17 +228,19 @@ def plot_efficiency(df, map_col, map_label, filename):
     plt.close() 
 
 def plot_inference_time_bar(df, filename): 
-    pivot_df = df.pivot(index='Model', columns='Device', values='InferenceTime') 
+    # On filtre 'Idle' qui n'a pas de temps d'inférence
+    df_plot = df[df['Model'] != 'Idle']
+    pivot_df = df_plot.pivot(index='Model', columns='Device', values='InferenceTime') 
     ax = pivot_df.plot(kind='bar', edgecolor='black', figsize=(12,6)) 
-     
+      
     plt.title("Temps d'inférence moyen par modèle et périphérique", fontsize=15) 
     plt.xlabel("Modèle", fontsize=12) 
     plt.ylabel("Temps d'inférence (ms)", fontsize=12) 
-     
+      
     plt.yscale('log') 
     plt.grid(True, which="both", linestyle='--', alpha=0.4) 
     plt.text(0, 1.01, 'Logarithmique', transform=plt.gca().transAxes, fontsize=9, fontweight='bold', va='bottom') 
-     
+      
     plt.xticks(rotation=45, ha='right') 
     plt.legend(title="Périphérique", bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0) 
     plt.tight_layout() 
@@ -257,11 +254,20 @@ def generate_global_comparisons(bench_config):
         if not os.path.exists(cfg['bench']): continue 
         dfs_p = [pd.read_csv(pf) for pf in cfg['power_files'] if os.path.exists(pf)] 
         if not dfs_p: continue 
-        idle_p = sum(get_avg_power(df, 'Idle') for df in dfs_p) 
+        
+        # --- AJOUT DE L'IDLE COMME UN "MODÈLE" ---
+        idle_p_list = [get_avg_power(df, 'Idle') for df in dfs_p]
+        results.append({ 
+            'Device': cfg['device'], 'Model': 'Idle', 
+            'mAP_box': 0, 'mAP_mask': 0, 
+            'Score': 0, 'InferenceTime': 0,
+            'PowerList': idle_p_list
+        }) 
+
+        idle_p = sum(idle_p_list) 
         df_bench = pd.read_csv(cfg['bench']) 
 
         for _, row in df_bench.iterrows(): 
-            # On stocke chaque composant de puissance individuellement pour le nouveau graphe
             p_list = [get_avg_power(df, row['Model']) for df in dfs_p]
             total_p = sum(p_list) 
             
@@ -272,16 +278,14 @@ def generate_global_comparisons(bench_config):
                     'Device': cfg['device'], 'Model': clean_model_name(row['Model']), 
                     'mAP_box': row.get('mAP_box', 0), 'mAP_mask': row.get('mAP_mask', 0), 
                     'Score': score_joules, 'InferenceTime': row['time_avg'],
-                    'PowerList': p_list # Donnée pour le graphe mergé
+                    'PowerList': p_list 
                 }) 
 
     if results: 
         df_res = pd.DataFrame(results) 
-        # Appels originaux
         plot_efficiency(df_res, 'mAP_box', 'mAP Box', 'comparaison_efficacite_box.png') 
         plot_efficiency(df_res, 'mAP_mask', 'mAP Mask', 'comparaison_efficacite_mask.png') 
         plot_inference_time_bar(df_res, 'comparaison_temps_inference.png') 
-        # Nouvel appel pour le graphe fusionné
         plot_merged_consumption_stacked(df_res, 'comparaison_conso_fusionnee.png')
 
 # 5. EXECUTION 
