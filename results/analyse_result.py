@@ -59,9 +59,7 @@ def generate_individual_profiles(config_dict, global_max):
     print(f"--- 1. Génération des profils individuels (Max global: {global_max:.2f}W) ---")
     
     for file_key, (time_step, custom_label) in config_dict.items():
-        files = [file_key] if isinstance(file_key, str) else file_key
-        df_combined = None
-        col_conso = ""
+        files = [file_key] if isinstance(file_key, str) else list(file_key)
         
         for f in files:
             if not os.path.exists(f): continue
@@ -73,80 +71,97 @@ def generate_individual_profiles(config_dict, global_max):
             else:
                 df_combined[col_conso] = df_combined[col_conso].add(temp_df[c], fill_value=0)
         
-        if df_combined is None: continue
+        if not valid_dfs:
+            continue
 
-        # --- Calcul de l'Idle pour cet appareil ---
-        idle_power = get_avg_power(df_combined, 'Idle')
-        print(f"   > {custom_label} | Idle détecté : {idle_power:.2f}W")
-
-        models = [p for p in df_combined['Phase'].unique() if p != 'Idle']
+        # Détection automatique des colonnes
+        col_conso = 'Power' if 'Power' in valid_dfs[0].columns else 'Watt (W)'
+        col_phase = 'Phase' if 'Phase' in valid_dfs[0].columns else 'Model'
         
-        # --- Graphique d'évolution (DYNAMIQUE UNIQUEMENT) ---
+        # Somme pour le graphique des courbes (on s'aligne sur la longueur minimale)
+        min_len = min(len(d) for d in valid_dfs)
+        df_total = valid_dfs[0].iloc[:min_len].copy()
+        if len(valid_dfs) > 1:
+            for other_df in valid_dfs[1:]:
+                df_total[col_conso] += other_df[col_conso].iloc[:min_len].values
+        
+        models = [p for p in df_total[col_phase].unique() if p != 'Idle']
+        
+        # --- A. GRAPHE DES COURBES (PUISSANCE TOTALE) ---
         plt.figure(figsize=(12, 6))
-        averages_total = {}
-        
-        # On stocke l'idle pour l'histogramme plus tard
-        if idle_power > 0:
-            averages_total['Idle'] = idle_power
-
         for model in models:
-            indices = df_combined.index[df_combined['Phase'] == model].tolist()
+            indices = df_total.index[df_total[col_phase] == model].tolist()
             if not indices: continue
             
-            s, e = max(0, indices[0]-5), min(len(df_combined)-1, indices[-1]+5)
-            subset = df_combined.iloc[s:e+1].copy()
+            s, e = max(0, indices[0]-5), min(len(df_total)-1, indices[-1]+5)
+            subset = df_total.iloc[s:e+1].copy()
             subset['Relative Time'] = np.arange(len(subset)) * time_step
             
             # Soustraction de l'idle pour la courbe temporelle
             dynamic_power_curve = (subset[col_conso] - idle_power).clip(lower=0.01)
             
             label_c = clean_model_name(model)
-            plt.plot(subset['Relative Time'], dynamic_power_curve, label=label_c)
-            
-            # On garde la moyenne TOTALE pour l'histogramme
-            averages_total[label_c] = df_combined.iloc[indices[0]:indices[-1]+1][col_conso].mean()
+            plt.plot(subset['Relative Time'], subset[col_conso], label=label_c)
 
-        plt.title(f"Puissance Dynamique (Surconsommation) : {custom_label}")
+        plt.title(f"Profil de Puissance Totale : {custom_label}")
         plt.xlabel("Secondes")
-        plt.ylabel("Watts additionnels (Log)")
-        #plt.yscale('log')
-        plt.ylim(0, (global_max-idle_power)*1.1)
+        plt.ylabel("Puissance (Watt)")
         plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-        plt.grid(True, which="both", ls="-", alpha=0.2)
+        plt.grid(True, alpha=0.3)
         plt.tight_layout()
-        
         file_name_clean = custom_label.replace(' ', '_').replace('+', 'plus')
         plt.savefig(os.path.join(OUTPUT_DIR, f"courbes_{file_name_clean}.png"))
         plt.close()
 
-        # --- Graphique des moyennes (TOTALES AVEC IDLE) ---
-        if averages_total:
-            # Tri décroissant par puissance
-            sorted_avg = dict(sorted(averages_total.items(), key=lambda x: x[1], reverse=True))
-            plt.figure(figsize=(10, 5))
-            
-            # Couleur différente pour l'Idle
-            colors = ['#ff9933' if k == 'Idle' else '#66b3ff' for k in sorted_avg.keys()]
-            bars = plt.bar(sorted_avg.keys(), sorted_avg.values(), color=colors, edgecolor='black')
-            
-            plt.title(f"Consommation Moyenne Totale : {custom_label} (avec Idle)")
-            plt.ylabel("Watts (Log)")
-            plt.yscale('log')
-            plt.ylim(1, global_max * 1.2 )
-            plt.xticks(rotation=45, ha='right')
-            
-            for b in bars:
-                val = b.get_height()
-                if val >= 1:
-                    plt.text(b.get_x()+b.get_width()/2, val * 1.05, 
-                             f"{val:.2f}W", ha='center', fontweight='bold', fontsize=9)
-            
-            plt.grid(True, which="both", axis='y', ls="-", alpha=0.2)
-            plt.tight_layout()
-            plt.savefig(os.path.join(OUTPUT_DIR, f"moyennes_{file_name_clean}.png"))
-            plt.close()
-            
-        print(f"   > Graphiques terminés pour {custom_label}")
+        # --- B. GRAPHE DES MOYENNES (EMPILÉES SI MULTI-FICHIERS) ---
+        phases = ['Idle'] + models
+        avg_data = {}
+        
+        for p in phases:
+            p_clean = clean_model_name(p) if p != 'Idle' else 'Idle'
+            vals = []
+            for d in valid_dfs:
+                subset = d[d[col_phase] == p]
+                vals.append(subset[col_conso].mean() if not subset.empty else 0)
+            avg_data[p_clean] = vals
+
+        # Tri par puissance totale décroissante
+        sorted_keys = sorted(avg_data.keys(), key=lambda k: sum(avg_data[k]), reverse=True)
+        
+        plt.figure(figsize=(12, 6))
+        bottoms = np.zeros(len(sorted_keys))
+        
+        # Couleurs et labels pour les composants
+        if len(valid_dfs) == 2:
+            comp_names = ["GPU", "CPU"] # Basé sur l'ordre de votre tuple
+            comp_colors = ['#3498db', '#e74c3c'] # Bleu pour GPU, Rouge pour CPU
+        else:
+            comp_names = [f"Fichier {i+1}" for i in range(len(valid_dfs))]
+            comp_colors = sns.color_palette("muted", len(valid_dfs))
+
+        for i in range(len(valid_dfs)):
+            heights = [avg_data[k][i] for k in sorted_keys]
+            plt.bar(sorted_keys, heights, bottom=bottoms, color=comp_colors[i], 
+                    edgecolor='black', label=comp_names[i])
+            bottoms += np.array(heights)
+
+        # Ajout du texte de la puissance totale au-dessus de chaque barre
+        for idx, k in enumerate(sorted_keys):
+            total = sum(avg_data[k])
+            plt.text(idx, total + 0.1, f"{total:.2f}W", ha='center', fontweight='bold')
+
+        plt.title(f"Consommation Moyenne Détaillée : {custom_label}")
+        plt.ylabel("Watts")
+        plt.xticks(rotation=45, ha='right')
+        if len(valid_dfs) > 1:
+            plt.legend(title="Composants")
+        
+        plt.grid(axis='y', linestyle='--', alpha=0.5)
+        plt.tight_layout()
+        plt.savefig(os.path.join(OUTPUT_DIR, f"moyennes_{file_name_clean}.png"))
+        plt.close()
+        
+        print(f"Terminé pour {custom_label}")
 
 # 4. GÉNÉRATION DES COMPARAISONS GLOBALES
 def plot_efficiency(df, map_col, map_label, filename):
